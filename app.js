@@ -4,7 +4,7 @@
 // ----- Configuration -----
 // Paste your Google Apps Script Web App URL here (after you deploy as web app)
 // Example: const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/XXXXX/exec';
-const GOOGLE_SHEETS_WEB_APP_URL = '';
+const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxRzGXn-Dqrz2y-bbqKfZCJcK50slV-npuGa-njN65gBY0jmvCs1EGUbAUuhcBm260b8Q/exec';
 
 // ----- State -----
 // Base chores/habits (do not store per-day completion here)
