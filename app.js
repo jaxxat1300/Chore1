@@ -352,23 +352,13 @@ async function exportToGoogleSheets() {
 
         const res = await fetch(GOOGLE_SHEETS_WEB_APP_URL, {
             method: 'POST',
+            mode: 'no-cors',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
 
-        const text = await res.text();
-        let json;
-        try { json = JSON.parse(text); } catch (_) { json = null; }
-
-        if (res.ok && json && json.ok) {
-            showMessage(`Exported to Google Sheets! (${json.choresWritten || 0} chores, ${json.completionsWritten || 0} completions)`, 'success');
-        } else if (res.ok) {
-            console.warn('Export response (non-standard):', text);
-            showMessage('Export request succeeded but response was unexpected. Check console and sheet.', 'error');
-        } else {
-            console.error('Export failed', { status: res.status, text });
-            showMessage(`Export failed (HTTP ${res.status}). See console for details.`, 'error');
-        }
+        // In no-cors mode, we can't read the response, so just show success
+        showMessage('Export request sent to Google Sheets! Check your sheet.', 'success');
     } catch (e) {
         console.error(e);
         showMessage('Failed to export. Check your internet and Apps Script URL.', 'error');
