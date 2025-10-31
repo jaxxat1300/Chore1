@@ -4,8 +4,7 @@
 // ----- Configuration -----
 // Paste your Google Apps Script Web App URL here (after you deploy as web app)
 // Example: const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/XXXXX/exec';
-const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxRzGXn-Dqrz2y-bbqKfZCJcK50slV-npuGa-njN65gBY0jmvCs1EGUbAUuhcBm260b8Q/exec';
-
+const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxRzGXn-Dqrz2y-bbqKfZCJcK50slV-npuGa-njN65gBY0jmvCs1EGUbAUuhcBm260b8Q/exec/'
 // ----- State -----
 // Base chores/habits (do not store per-day completion here)
 // Schema: { id, title, notes, startDate (YYYY-MM-DD), recurrence: '', 'daily', 'weekly', 'monthly', createdAt }
@@ -268,21 +267,32 @@ function renderChoreList() {
         return;
     }
 
-    // Generate occurrences for the next 60 days for a minimal, practical list
+    // Show only: occurrences for TODAY, plus the NEXT upcoming occurrence for each chore
     const today = new Date();
-    const horizonDays = 60;
+    const todayISO = toISODate(today);
     const occurrences = [];
+    const seenKeys = new Set();
 
-    for (let offset = 0; offset < horizonDays; offset++) {
-        const d = new Date(today);
-        d.setDate(d.getDate() + offset);
-        const dateISO = toISODate(d);
-        chores.forEach(chore => {
-            if (occursOnDate(chore, dateISO)) {
-                occurrences.push({ chore, dateISO });
+    // 1) Add today's occurrences
+    chores.forEach(chore => {
+        if (occursOnDate(chore, todayISO)) {
+            const key = `${chore.id}|${todayISO}`;
+            occurrences.push({ chore, dateISO: todayISO });
+            seenKeys.add(key);
+        }
+    });
+
+    // 2) For each chore, add the next future occurrence (within a reasonable horizon)
+    chores.forEach(chore => {
+        const nextDate = findNextOccurrenceDate(chore, todayISO);
+        if (nextDate) {
+            const key = `${chore.id}|${nextDate}`;
+            if (!seenKeys.has(key)) {
+                occurrences.push({ chore, dateISO: nextDate });
+                seenKeys.add(key);
             }
-        });
-    }
+        }
+    });
 
     // Sort by date ascending, then by title
     occurrences.sort((a, b) => (a.dateISO.localeCompare(b.dateISO) || a.chore.title.localeCompare(b.chore.title)));
@@ -313,6 +323,18 @@ function renderChoreList() {
     }).join('');
 }
 
+// Find the next occurrence date strictly after fromISO, searching up to 365 days ahead
+function findNextOccurrenceDate(chore, fromISO) {
+    const from = new Date(fromISO);
+    for (let i = 1; i <= 365; i++) {
+        const d = new Date(from);
+        d.setDate(d.getDate() + i);
+        const iso = toISODate(d);
+        if (occursOnDate(chore, iso)) return iso;
+    }
+    return null;
+}
+
 // Export to Google Sheets via Apps Script Web App
 async function exportToGoogleSheets() {
     if (!GOOGLE_SHEETS_WEB_APP_URL) {
@@ -333,10 +355,18 @@ async function exportToGoogleSheets() {
             body: JSON.stringify(payload),
         });
 
-        if (res.ok) {
-            showMessage('Exported to Google Sheets!', 'success');
+        const text = await res.text();
+        let json;
+        try { json = JSON.parse(text); } catch (_) { json = null; }
+
+        if (res.ok && json && json.ok) {
+            showMessage(`Exported to Google Sheets! (${json.choresWritten || 0} chores, ${json.completionsWritten || 0} completions)`, 'success');
+        } else if (res.ok) {
+            console.warn('Export response (non-standard):', text);
+            showMessage('Export request succeeded but response was unexpected. Check console and sheet.', 'error');
         } else {
-            showMessage('Export request sent. If sheet not updated, check Apps Script CORS/permissions.', 'error');
+            console.error('Export failed', { status: res.status, text });
+            showMessage(`Export failed (HTTP ${res.status}). See console for details.`, 'error');
         }
     } catch (e) {
         console.error(e);
