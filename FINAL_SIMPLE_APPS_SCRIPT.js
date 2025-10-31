@@ -5,7 +5,7 @@ function doGet(e) {
   try {
     // Download: return all shared data
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const choresSheet = getOrCreateSheet(ss, 'Chores', ['id','title','notes','startDate','recurrence','createdAt']);
+    const choresSheet = getOrCreateSheet(ss, 'Chores', ['id','title','notes','startDate','recurrence','createdAt','exportedAt']);
     const compsSheet = getOrCreateSheet(ss, 'Completions', ['choreId','occurrenceDate']);
     
     // Read all chores
@@ -67,12 +67,26 @@ function doPost(e) {
     const completionMap = (payload.completionMap && typeof payload.completionMap === 'object') ? payload.completionMap : {};
     
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const choresSheet = getOrCreateSheet(ss, 'Chores', ['id','title','notes','startDate','recurrence','createdAt']);
+    const choresSheet = getOrCreateSheet(ss, 'Chores', ['id','title','notes','startDate','recurrence','createdAt','exportedAt']);
     const compsSheet = getOrCreateSheet(ss, 'Completions', ['choreId','occurrenceDate']);
+    
+    // Helper to format ISO timestamp to readable date/time
+    function formatTimestamp(isoString) {
+      if (!isoString) return '';
+      try {
+        const d = new Date(isoString);
+        return Utilities.formatDate(d, Session.getScriptTimeZone(), 'MM/dd/yyyy HH:mm:ss');
+      } catch (e) {
+        return isoString; // return as-is if parsing fails
+      }
+    }
+    
+    const now = new Date();
+    const exportedAt = Utilities.formatDate(now, Session.getScriptTimeZone(), 'MM/dd/yyyy HH:mm:ss');
     
     // Overwrite all chores
     if (chores.length > 0) {
-      choresSheet.getRange(2, 1, choresSheet.getLastRow() - 1, 6).clear();
+      choresSheet.getRange(2, 1, choresSheet.getLastRow() - 1, 7).clear();
       
       const rows = chores.map(c => [
         c.id || '',
@@ -80,7 +94,8 @@ function doPost(e) {
         c.notes || '',
         c.startDate || '',
         c.recurrence || '',
-        c.createdAt || ''
+        formatTimestamp(c.createdAt),
+        exportedAt
       ]);
       if (rows.length > 0) {
         choresSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
@@ -89,7 +104,6 @@ function doPost(e) {
     
     // Append new completions to Activity Log (avoid duplicates)
     const logSheet = getOrCreateSheet(ss, 'Activity Log', ['Chore','Date Completed','Week','Time Completed']);
-    const now = new Date();
     
     // Get existing log entries to check for duplicates
     const logData = logSheet.getDataRange().getValues();
