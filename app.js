@@ -26,7 +26,7 @@ const calendarGrid = document.getElementById('calendar-grid');
 const currentMonthDisplay = document.getElementById('current-month');
 const prevMonthBtn = document.getElementById('prev-month');
 const nextMonthBtn = document.getElementById('next-month');
-const exportSheetsBtn = document.getElementById('export-sheets-btn');
+const syncBtn = document.getElementById('sync-btn');
 const clearCompletedBtn = document.getElementById('clear-completed-btn');
 
 // Initialize the application when the page loads
@@ -66,7 +66,7 @@ function initializeEventListeners() {
     nextMonthBtn.addEventListener('click', () => navigateMonth(1));
     
     // List view controls
-    exportSheetsBtn.addEventListener('click', exportToGoogleSheets);
+    syncBtn.addEventListener('click', syncWithGoogleSheets);
     clearCompletedBtn.addEventListener('click', clearCompletedChores);
 }
 
@@ -337,14 +337,20 @@ function findNextOccurrenceDate(chore, fromISO) {
 }
 
 // Export to Google Sheets via Apps Script Web App
-async function exportToGoogleSheets() {
+// Sync with Google Sheets (bidirectional: upload local data, download shared data)
+async function syncWithGoogleSheets() {
     if (!GOOGLE_SHEETS_WEB_APP_URL) {
         alert('Please paste your Google Apps Script Web App URL in app.js (GOOGLE_SHEETS_WEB_APP_URL).');
         return;
     }
 
     try {
+        syncBtn.disabled = true;
+        syncBtn.textContent = 'Syncing...';
+        
+        // Step 1: Upload our local data to the sheet
         const payload = {
+            action: 'upload',
             chores,
             completionMap,
             exportedAt: new Date().toISOString(),
@@ -357,11 +363,38 @@ async function exportToGoogleSheets() {
             body: JSON.stringify(payload),
         });
 
-        // In no-cors mode, we can't read the response, so just show success
-        showMessage('Export request sent to Google Sheets! Check your sheet.', 'success');
+        // Step 2: Download shared data (via GET since POST/no-cors can't read response)
+        const loadRes = await fetch(`${GOOGLE_SHEETS_WEB_APP_URL}?action=download`);
+        const loadText = await loadRes.text();
+        
+        try {
+            const sharedData = JSON.parse(loadText);
+            if (sharedData && sharedData.chores) {
+                // Merge shared chores with local ones (prioritize shared for collaboration)
+                const sharedChoreIds = new Set(sharedData.chores.map(c => c.id));
+                const localOnly = chores.filter(c => !sharedChoreIds.has(c.id));
+                chores = [...sharedData.chores, ...localOnly];
+                
+                // Merge completion data
+                if (sharedData.completionMap) {
+                    completionMap = { ...sharedData.completionMap, ...completionMap };
+                }
+                
+                saveToStorage();
+                renderCalendar();
+                renderChoreList();
+                showMessage('Synced with Google Sheets!', 'success');
+            }
+        } catch (parseErr) {
+            console.error('Could not parse shared data:', parseErr);
+            showMessage('Uploaded successfully, but could not load shared data.', 'error');
+        }
     } catch (e) {
         console.error(e);
-        showMessage('Failed to export. Check your internet and Apps Script URL.', 'error');
+        showMessage('Failed to sync. Check your internet and Apps Script URL.', 'error');
+    } finally {
+        syncBtn.disabled = false;
+        syncBtn.textContent = 'Sync with Google Sheets';
     }
 }
 
